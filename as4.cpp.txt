@@ -1,0 +1,45 @@
+#include <stdio.h>
+#include <omp.h>
+
+#define N 8
+#define M 4
+
+int a[N], b[N], c[N];
+int p[M*M], q[M*M], r[M*M];
+
+void vectorAdd() {
+    #pragma omp parallel for
+    for (int i = 0; i < N; i++)
+        c[i] = a[i] + b[i];
+}
+
+void matMul() {
+    #pragma omp parallel for collapse(2)
+    for (int i = 0; i < M; i++)
+        for (int j = 0; j < M; j++) {
+            int sum = 0;
+            for (int k = 0; k < M; k++)
+                sum += p[i*M+k] * q[k*M+j];
+            r[i*M+j] = sum;
+        }
+}
+
+int main() {
+    for (int i = 0; i < N; i++) { a[i] = i+1; b[i] = i+1; }
+    for (int i = 0; i < M*M; i++) { p[i] = 1; q[i] = 2; }
+
+    vectorAdd();
+    printf("Vector Addition:\n");
+    for (int i = 0; i < N; i++)
+        printf("  %d + %d = %d\n", a[i], b[i], c[i]);
+
+    matMul();
+    printf("\nMatrix Multiplication (%dx%d):\n", M, M);
+    for (int i = 0; i < M; i++) {
+        for (int j = 0; j < M; j++)
+            printf("  %d", r[i*M+j]);
+        printf("\n");
+    }
+
+    return 0;
+}

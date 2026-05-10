@@ -1,0 +1,109 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <omp.h>
+
+#define MAX 100
+#define V 8
+
+typedef struct Node { int data; struct Node *left, *right; } Node;
+
+Node* newNode(int val) {
+    Node* n = (Node*)malloc(sizeof(Node));
+    n->data = val; n->left = n->right = NULL;
+    return n;
+}
+
+int adj[V][V], visited[V];
+void addEdge(int u, int v) { adj[u][v] = adj[v][u] = 1; }
+
+void treeBFS(Node* root) {
+    if (!root) return;
+    printf("\n--- Tree BFS ---\n");
+    Node* q[MAX]; int f = 0, r = 0;
+    q[r++] = root;
+    while (f < r) {
+        int sz = r - f;
+        #pragma omp parallel for schedule(dynamic)
+        for (int i = 0; i < sz; i++) {
+            #pragma omp critical
+            printf("  %d (t%d)\n", q[f+i]->data, omp_get_thread_num());
+        }
+        for (int i = 0; i < sz; i++) {
+            if (q[f+i]->left)  q[r++] = q[f+i]->left;
+            if (q[f+i]->right) q[r++] = q[f+i]->right;
+        }
+        f += sz;
+    }
+}
+
+void treeDFS(Node* n) {
+    if (!n) return;
+    #pragma omp critical
+    printf("  %d (t%d)\n", n->data, omp_get_thread_num());
+    #pragma omp task firstprivate(n)
+    treeDFS(n->left);
+    #pragma omp task firstprivate(n)
+    treeDFS(n->right);
+    #pragma omp taskwait
+}
+
+void graphBFS(int s) {
+    printf("\n--- Graph BFS ---\n");
+    int q[MAX], f = 0, r = 0;
+    visited[s] = 1; q[r++] = s;
+    while (f < r) {
+        int sz = r - f;
+        #pragma omp parallel for schedule(dynamic)
+        for (int i = 0; i < sz; i++) {
+            #pragma omp critical
+            printf("  %d (t%d)\n", q[f+i], omp_get_thread_num());
+        }
+        for (int i = 0; i < sz; i++)
+            for (int w = 0; w < V; w++)
+                if (adj[q[f+i]][w] && !visited[w]) { visited[w] = 1; q[r++] = w; }
+        f += sz;
+    }
+}
+
+void graphDFS(int u) {
+    #pragma omp critical
+    printf("  %d (t%d)\n", u, omp_get_thread_num());
+    for (int w = 0; w < V; w++) {
+        if (adj[u][w]) {
+            int go = 0;
+            #pragma omp critical
+            { if (!visited[w]) { visited[w] = 1; go = 1; } }
+            if (go) {
+                #pragma omp task firstprivate(w)
+                graphDFS(w);
+            }
+        }
+    }
+    #pragma omp taskwait
+}
+
+int main() {
+    Node* root = newNode(1);
+    root->left = newNode(2);        root->right = newNode(3);
+    root->left->left = newNode(4);  root->left->right = newNode(5);
+    root->right->left = newNode(6); root->right->right = newNode(7);
+
+    addEdge(0,1); addEdge(0,2); addEdge(1,3);
+    addEdge(1,4); addEdge(2,5); addEdge(2,6); addEdge(3,7);
+
+    treeBFS(root);
+    printf("\n--- Tree DFS ---\n");
+    #pragma omp parallel
+    #pragma omp single
+    treeDFS(root);
+
+    for (int i = 0; i < V; i++) visited[i] = 0;
+    graphBFS(0);
+
+    printf("\n--- Graph DFS ---\n");
+    for (int i = 0; i < V; i++) visited[i] = 0;
+    visited[0] = 1;
+    #pragma omp parallel
+    #pragma omp single
+    graphDFS(0);
+}
